@@ -486,7 +486,7 @@ class VBNN:
         kappa = max(kappas)
         for ka in kappas:
             if self.FDR(ka) < alpha:
-                print(kappa, ka, self.FDR(ka))
+                # print(kappa, ka, self.FDR(ka))
                 kappa = ka
                 continue
             else:
@@ -503,8 +503,8 @@ class VBNN:
                     for j in range(self.D[k]):
                         if max(1-gaussian.cdf(-weight_means[i][j]/stdev[i][j]), gaussian.cdf(-weight_means[i][j]/stdev[i][j])) >= kappa:
                             W_star[i,j] = np.copy(weight_means[i][j])
-                else:
-                    print('node with indices ', k+1, i, ' is zero,\n ratio for rho is ', len(self.rho[k][:, i][(self.rho[k][:, i]<0.5)]), 'from',  self.N)
+                # else:
+                    # print('node with indices ', k+1, i, ' is zero,\n ratio for rho is ', len(self.rho[k][:, i][(self.rho[k][:, i]<0.5)]), 'from',  self.N)
             W_stars.append(np.ndarray.copy(W_star))
 
         W_star_o = np.zeros((self.D[self.L +1], self.D[self.L]))
@@ -517,18 +517,19 @@ class VBNN:
         W_stars.append(W_star_o)
 
 
-        for i in range(self.L):
-            for j in range(self.D[i]):
-                for k in range(self.D[i+1]):
-                    if (np.abs(W_stars[i][k,j]*W_stars[i+1][:, k])<epsilon*np.ones(W_stars[i+1][:, k].shape)).all():
-                        W_stars[i][k,j] = 0
-
-
-        # for i in range(1, self.L + 1):
+        # for i in range(self.L):
         #     for j in range(self.D[i]):
         #         for k in range(self.D[i+1]):
-        #             if (np.abs(W_stars[i][k,j]*W_stars[i-1][j])<epsilon*np.ones(W_stars[i-1][j].shape)).all():
+        #             if (np.abs(W_stars[i][k,j]*W_stars[i+1][:, k])<epsilon*np.ones(W_stars[i+1][:, k].shape)).all():
         #                 W_stars[i][k,j] = 0
+
+
+        for i in range(1, self.L + 1):
+            for j in range(self.D[i]):
+                for k in range(self.D[i+1]):
+                    if (np.abs(W_stars[i][k,j]*W_stars[i-1][j])<epsilon*np.ones(W_stars[i-1][j].shape)).all():
+                        W_stars[i][k,j] = 0
+                        W_stars[i-1][j] = np.zeros(W_stars[i-1][j].shape)
 
         for _ in range(3):
             for k in range(self.L):

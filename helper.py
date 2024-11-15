@@ -107,7 +107,7 @@ class ELBO_Simple(VBNN):
 
         Args:
             x_new (np.array): new data to predict on
-            runs (int, optional): among how many models to choose. Defaults to 50.
+            runs (int, optional): among how many models to choose. Defaults to 10.
             epochs (int, optional): max number of iterations for training. Defaults to 50.
             epochs_pred (int, optional): max number of iterations for prediction. Defaults to 20.
             rate (float, optional): rate for ELBO when to stop the training. Defaults to 1e-6.
@@ -156,16 +156,16 @@ class ELBO_Mix(VBNN):
             print('want dict')
 
 
-    def model_choice_ensemble(self, x_new, epochs=25, epochs_pred=10, tau=1,  rate = 1e-5, rate_pred = 1e-4):
+    def model_ensemble(self, x_new, epochs=50, epochs_pred=20,  rate = 1e-5, rate_pred = 1e-4, tau=1):
         """trains 4 models and gets the predictive mean and st dev.
 
         Args:
             x_new (np.array): new data to predict on
-            runs (int, optional): among how many models to choose. Defaults to 50.
             epochs (int, optional): max number of iterations for training. Defaults to 50.
             epochs_pred (int, optional): max number of iterations for prediction. Defaults to 20.
             rate (float, optional): rate for ELBO when to stop the training. Defaults to 1e-6.
             rate_pred (float, optional): rate for ELBO when to stop the prediction. Defaults to 1e-4.
+            tau (int, optional): if you want to change the way models are combined (weights become proportional to exp(tau*elbo). Defaults to 1.
         """
 
         self.prediction = None
@@ -176,28 +176,28 @@ class ELBO_Mix(VBNN):
         self.model_vartot = []
 
         self.elbos = []
-        model_1 =VBNN(self.x, self.y, self.D_a, self.L, self.T, self.big_S, wb_mode = 'spikeslab')
+        model_1 =VBNN(self.x, self.y, self.D_a, self.L, self.T, wb_mode = 'spikeslab', big_S = self.big_S)
         model_1.algorithm(epochs, rate)
         self.elbos.append(model_1.elbo_total[-1])
         model_1.predict(np.copy(x_new), epochs_pred, rate_pred)
         self.y_model.append(np.copy(model_1.prediction_mean))
         self.model_vartot.append(np.copy(model_1.var_tot))
 
-        model_2 =VBNN(self.x, self.y, self.D_a, self.L, self.T, self.big_S, wb_mode = 'spikeslab')
+        model_2 =VBNN(self.x, self.y, self.D_a, self.L, self.T, wb_mode = 'spikeslab', big_S = self.big_S)
         model_2.algorithm(epochs, rate)
         self.elbos.append(model_2.elbo_total[-1])
         model_2.predict(np.copy(x_new), epochs_pred, rate_pred)
         self.y_model.append(np.copy(model_2.prediction_mean))
         self.model_vartot.append(np.copy(model_2.var_tot))
 
-        model_3 =VBNN(self.x, self.y, self.D_a, self.L, self.T, self.big_S, wb_mode = 'laplace')
+        model_3 =VBNN(self.x, self.y, self.D_a, self.L, self.T, wb_mode = 'laplace', big_S = self.big_S)
         model_3.algorithm(epochs,rate)
         self.elbos.append(model_3.elbo_total[-1])
         model_3.predict(np.copy(x_new), epochs_pred, rate_pred)
         self.y_model.append(np.copy(model_3.prediction_mean))
         self.model_vartot.append(np.copy(model_3.var_tot))
 
-        model_4 =VBNN(self.x, self.y, self.D_a, self.L, self.T, self.big_S, wb_mode = 'laplace')
+        model_4 =VBNN(self.x, self.y, self.D_a, self.L, self.T, wb_mode = 'laplace', big_S = self.big_S)
         model_4.algorithm(epochs, rate)
         self.elbos.append(model_4.elbo_total[-1])
         model_4.predict(np.copy(x_new), epochs_pred, rate_pred)
