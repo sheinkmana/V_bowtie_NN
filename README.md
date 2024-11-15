@@ -1,4 +1,3 @@
-# V_bowtie_NN
 ## Variational bow tie Bayesian neural network with shrinkage
 - VBNN_class.py contains the main code for the network. 
 - helpers.py contains utilities for easy training and testing.
