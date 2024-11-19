@@ -4,8 +4,8 @@ This repository provides a Python implementation of the Variational Bow tie neur
 The VBNN is described and derived in a [Variational Bayesian Bow tie Neural Networks with Shrinkage](https://arxiv.org/abs/2411.11132) paper. 
 
  ---
- ### Repository has:
+ ### Repository has the following files:
  
-- VBNN_class.py contains the main code for the network. 
-- helpers.py contains utilities for easy training and testing.
-- test.ipynb notebook shows how to run VBNN on a simulated example.   
+- VBNN_class.py which contains the main code for the network. 
+- helpers.py which contains utilities for easy training and testing.
+- test.ipynb notebook which shows how to run VBNN on a simulated example.   
