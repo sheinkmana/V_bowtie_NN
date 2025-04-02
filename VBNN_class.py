@@ -65,7 +65,6 @@ def reparametrize_delta(delta):
 
 
 class VBNN:
-# class VBNN(object):
     """
     Description:
         Class for Variational Bow tie Bayesian Neural Network (VBNN)
@@ -79,6 +78,7 @@ class VBNN:
     :param T: float - temperature parameter, needs to be in (0, 1)
     :param wb_mode: str - initialization mode of the model: 'laplace' or 'spikeslab'
     :param big_S: float - initial value for the covariance matrix of the stochastic activations
+    :param sample_size: int - number of samples used in the stochastic optimization
     """
      
     def __init__(self, x, y, D_a, L, T, wb_mode, big_S):
@@ -89,66 +89,36 @@ class VBNN:
         residuals_linr = y.reshape(fitted_linr.shape) - fitted_linr
         beta = residuals_linr.var()
         delta = np.max(np.abs(linear_regr.coef_))**0.5
-        s_0 = np.abs(linear_regr.intercept_.item())**0.5
+        self.s_0_prior = np.abs(linear_regr.intercept_.item())**0.5
 
-        parameters_priors = {
-        "nu_tau"        : -1.5,
-        "delta_tau"     : delta*np.sqrt(L),
-        "nu_psi"        : -1.5, 
-        "delta_psi"     : delta*np.sqrt(D_a),
-        "alpha_eta_h"        : 2,
-        "beta_eta_h"     : 0.01,
-        "alpha_eta_o"      : 2,
-        "beta_eta_o"   : min(beta/4, 30), 
-        "s_0" : s_0}
         
-
-        if isinstance(parameters_priors, dict):
-            for key, val in parameters_priors.items():
-                setattr(self, key + "_prior", np.copy(val))
+        self.alpha_eta_h_prior, self.alpha_eta_o_prior = 2, 2
+        self.beta_eta_h_prior, self.beta_eta_o_prior = 0.01, min(beta/4, 30)
+        self.nu_tau_prior, self.nu_psi_prior = -1.5, -1.5
 
         self.T = T
         self.s_0 = np.sqrt(self.s_0_prior)
         
         self.x = np.ndarray.copy(x).reshape(x.shape[0], x.shape[1], 1)
         self.y = np.ndarray.copy(y)
-
+        
+        
         self.L = L
         self.N = self.x.shape[0]
         self.D = [self.x.shape[1]] + [D_a]*L + [self.y.shape[1]]
-        
 
-        self.delta_tau_prior = np.copy(self.delta_tau_prior/(self.L**0.5))
-        
-        self.delta_psi_prior = np.array([self.delta_psi_prior/(self.D[0]**0.5)] + [self.delta_psi_prior/(self.D[1]**0.5)]*self.L)
-        
-        
-        self.mode = wb_mode
+        self.delta_tau_prior = np.copy(delta)
+        self.delta_psi_prior = np.array([delta*self.D[1]**0.5/(self.D[0]**0.5)] + [delta]*self.L)
 
-        self.prediction_mean = None
-        self.var_lin = None
-        self.var_tot = None
-        self.elbo_total = []
-        self.elbo_pred = []
 
-        self.b_predict = None
-        self.M_predict = None
-        self.S_predict =  None
-        self.rho_predict = None
-        self.A_predict = [[]]*self.L
-
-    
-        # parameters shared across modes 
         self.epoch_no = 0
         
         self.big_b = [np.array([0.01*np.eye(self.D[i] + 1)]*self.D[i+1]) for i in range(self.L+1)]
         self.S = [np.array([big_S*np.eye(self.D[i+1])]*self.N) for i in range(self.L)]
         self.A = [[]]*self.L
-
        
         self.nu_glob = np.full(self.L +1, self.nu_tau_prior).astype(np.float64)
         self.delta_glob = np.sqrt(2*(-self.nu_glob -1)*invgamma.rvs(a=reparametrize_nu(self.nu_tau_prior), loc=0, scale=reparametrize_delta(self.delta_tau_prior), size = self.L +1))
-        
         
         self.nu_loc =[np.full((self.D[i+1], self.D[i]), self.nu_psi_prior).astype(np.float64) for i in range(self.L + 1)]
         self.delta_loc = [np.sqrt(2*(-self.nu_loc[i]-1)*invgamma.rvs(a=reparametrize_nu(self.nu_psi_prior), loc=0, scale=reparametrize_delta(self.delta_psi_prior[i]), size =(self.D[i+1], self.D[i]))) for i in range(self.L + 1)]
@@ -157,6 +127,16 @@ class VBNN:
         self.beta_h =  np.full((self.L, self.D[1]), self.beta_eta_h_prior, dtype=np.float64)
         self.alpha_0 = np.copy(self.alpha_eta_o_prior)
         self.beta_0 =  np.full(self.D[self.L+1], self.beta_eta_o_prior, dtype=np.float64)
+
+        self.mode = wb_mode
+
+        self.prediction_mean, self.var_lin, self.var_tot = None, None, None
+        self.elbo_total, self.elbo_pred = [], []
+
+        self.b_predict, self.M_predict, self.S_predict, self.rho_predict = None, None, None, None
+        self.A_predict = [[]]*self.L
+
+    
 
 # mode laplace on p 37 of paper 
         if self.mode == 'laplace':
@@ -233,11 +213,9 @@ class VBNN:
     def mean_finder(self, layer, n):
         if layer==0:
             mean = np.copy(self.x[n])
-            # mean = np.copy(self.x[n]).reshape(self.D[0], 1)
         if layer > 0:
             mean = np.copy(self.b[layer-1][n]) + np.ndarray.copy(self.M[layer -1][n])@np.ndarray.copy(self.mean_finder(layer -1, n))
         return np.copy(mean)
-        # return np.copy(mean).reshape(self.D[layer], 1)
     
 
     def aat_finder(self, layer, n):
@@ -247,7 +225,6 @@ class VBNN:
             var = np.ndarray.copy(self.S[layer-1][n]) + np.ndarray.copy(self.b[layer - 1][n])@np.ndarray.copy(self.b[layer-1][n]).T + np.ndarray.copy(self.M[layer-1][n])@np.ndarray.copy(self.aat_finder(layer-1, n))@np.ndarray.copy(self.M[layer-1][n]).T\
                 + np.ndarray.copy(self.M[layer-1][n])@np.ndarray.copy(self.mean_finder(layer-1, n))@np.ndarray.copy(self.b[layer-1][n].T) + np.ndarray.copy(self.b[layer-1][n])@np.ndarray.copy(self.mean_finder(layer-1, n)).T@np.ndarray.copy(self.M[layer-1][n]).T
         return np.ndarray.copy(var)
-        # return np.ndarray.copy(var).reshape(self.D[layer], self.D[layer])
     
 
     
@@ -269,7 +246,6 @@ class VBNN:
         for j in range(self.D[self.L+1]):
             temp_sum = 0  
             for i in range(self.N):
-
                 a_mean = self.mean_finder(self.L, i)
                 aat_mean = self.aat_finder(self.L, i)
                 temp_sum += ((self.y[i][j] - self.m_o[j][0,0] - (self.m_o[j][:, 1:]@a_mean).squeeze())**2\
@@ -280,10 +256,10 @@ class VBNN:
 
             self.beta_0[j] = self.beta_eta_o_prior + 0.5*temp_sum
 
-            if self.epoch_no == 0:
-                self.alpha_0 = self.alpha_eta_o_prior + 0.5*self.N
+        if self.epoch_no == 0:
+            self.alpha_0 = self.alpha_eta_o_prior + 0.5*self.N
 
-    
+
     def update_out_part2(self):
         for j in range(self.D[self.L+1]):
             temp_sum_m, temp_sum_b = 0, 0
@@ -299,38 +275,27 @@ class VBNN:
 
 
     def update_a(self):
-      
-            for k in reversed(range(self.L)): 
-                if k == self.L - 1:
-                    b_h_diag = np.diag([inv_mean_IG_eta(self.alpha_h, self.beta_h[k][i]) for i in range(self.D[k+1])])
-                    S_plug = solve(b_h_diag + np.sum([inv_mean_IG_eta(self.alpha_0, self.beta_0[i])*(self.big_b[k+1][i][1:, 1:] + self.m_o[i][:, 1:].T@self.m_o[i][:, 1:]) for i in range(self.D[k+2])], axis = 0), np.eye(self.D[k+1]), assume_a='pos')
-                    for n in range(self.N):
-                        self.S[k][n] = np.copy(S_plug)
-                        rho_dot_w = self.m_h[k].squeeze()[:,1:]*self.rho[k][n].reshape(self.D[k+1],1)
-                        rho_dot_b = (self.m_h[k].squeeze()[:,0]*self.rho[k][n]).reshape(self.D[k+1],1)
-                        self.b[k][n] = self.S[k][n]@(np.sum([inv_mean_IG_eta(self.alpha_0, self.beta_0[i])*(-self.big_b[k+1][i][1:,:1] + (-self.m_o[i][0,0] + self.y[n][i])*self.m_o[i][:,1:].T) for i in range(self.D[k+2])], axis =0) + b_h_diag@rho_dot_b)
-                        self.M[k][n] = self.S[k][n]@b_h_diag@rho_dot_w
-                else:
-                    # if self.epoch_no == 0:
-                    #     self.A[k+1] = []
-                    #     #with Tilda - W and b, 1 and a. 
-                    #     for j in range(self.N):
-                    #         a_mean =  self.mean_finder(k+1, j)
-                    #         aat = self.aat_finder(k+1, j)
-                    #         self.A[k+1].append([1/self.T*math.sqrt(self.big_b[k+1][i][0,0] + self.m_h[k+1][i][0,0]**2 + 2*(self.big_b[k+1][i][0,1:] +self.m_h[k+1][i][0,0]*self.m_h[k+1][i][:,1:])@a_mean\
-                    #                                              + self.m_h[k+1][i][:,1:]@(aat)@self.m_h[k+1][i][:,1:].T + (self.big_b[k+1][i][1:,1:]*(aat).T).sum()) for i in range(self.D[k+1])])
-                
-                    b_h_diag = np.diag([inv_mean_IG_eta(self.alpha_h, self.beta_h[k][i]) for i in range(self.D[k+1])])
-                    for n in range(self.N):
-                        self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.M[k+1][n]\
-                                                    + np.sum([(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:, 1:] + self.m_h[k+1][i][:, 1:].T@self.m_h[k+1][i][:, 1:]) for i in range(self.D[k+2])], axis = 0),np.eye(self.D[k+1]), assume_a = 'pos')
-                        rho_dot_w = self.m_h[k].squeeze()[:,1:]*self.rho[k][n].reshape(self.D[k+1],1)
-                        rho_dot_b = (self.m_h[k].squeeze()[:,0]*self.rho[k][n]).reshape(self.D[k+1],1)
-                        self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.b[k+1][n]\
-                                                            + np.sum([-(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:,:1].reshape(self.D[k+1], 1)  + self.m_h[k+1][i][0,0]*self.m_h[k+1][i][:,1:].T )\
-                                                            + 1/self.T*(self.rho[k+1][n][i] - 0.5)*self.m_h[k+1][i][:,1:].T for i in range(self.D[k+2])], axis =0))
-                        self.M[k][n] = self.S[k][n]@b_h_diag@rho_dot_w 
+            b_h_diag = np.diag([inv_mean_IG_eta(self.alpha_h, self.beta_h[self.L - 1][i]) for i in range(self.D[self.L])])
+            S_plug = solve(b_h_diag + np.sum([inv_mean_IG_eta(self.alpha_0, self.beta_0[i])*(self.big_b[self.L][i][1:, 1:] + self.m_o[i][:, 1:].T@self.m_o[i][:, 1:]) for i in range(self.D[self.L+1])], axis = 0), np.eye(self.D[self.L]), assume_a='pos')
+            for n in range(self.N):
+                self.S[self.L - 1][n] = np.copy(S_plug)
+                rho_dot_w = self.m_h[self.L - 1].squeeze()[:,1:]*self.rho[self.L - 1][n].reshape(self.D[self.L],1)
+                rho_dot_b = (self.m_h[self.L - 1].squeeze()[:,0]*self.rho[self.L - 1][n]).reshape(self.D[self.L],1)
+                self.b[self.L - 1][n] = self.S[self.L - 1][n]@(np.sum([inv_mean_IG_eta(self.alpha_0, self.beta_0[i])*(-self.big_b[self.L][i][1:,:1] + (-self.m_o[i][0,0] + self.y[n][i])*self.m_o[i][:,1:].T) for i in range(self.D[self.L+1])], axis =0) + b_h_diag@rho_dot_b)
+                self.M[self.L - 1][n] = self.S[self.L - 1][n]@b_h_diag@rho_dot_w
     
+            for k in reversed(range(self.L-1)):               
+                b_h_diag = np.diag([inv_mean_IG_eta(self.alpha_h, self.beta_h[k][i]) for i in range(self.D[k+1])])
+                for n in range(self.N):
+                    self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.M[k+1][n]\
+                                                + np.sum([(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:, 1:] + self.m_h[k+1][i][:, 1:].T@self.m_h[k+1][i][:, 1:]) for i in range(self.D[k+2])], axis = 0),np.eye(self.D[k+1]), assume_a = 'pos')
+                    rho_dot_w = self.m_h[k].squeeze()[:,1:]*self.rho[k][n].reshape(self.D[k+1],1)
+                    rho_dot_b = (self.m_h[k].squeeze()[:,0]*self.rho[k][n]).reshape(self.D[k+1],1)
+                    self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.b[k+1][n]\
+                                                        + np.sum([-(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:,:1].reshape(self.D[k+1], 1)  + self.m_h[k+1][i][0,0]*self.m_h[k+1][i][:,1:].T )\
+                                                        + 1/self.T*(self.rho[k+1][n][i] - 0.5)*self.m_h[k+1][i][:,1:].T for i in range(self.D[k+2])], axis =0))
+                    self.M[k][n] = self.S[k][n]@b_h_diag@rho_dot_w 
+
     def update_hid_part1(self, k):
 
 
@@ -342,7 +307,6 @@ class VBNN:
             self.nu_glob[k] = self.nu_tau_prior - 0.5*self.D[k+1]*self.D[k]
 
     
-
 
         self.delta_loc[k] = np.array([[np.sqrt(self.delta_psi_prior[k]**2\
         + inv_mean_IG(self.nu_glob[k], self.delta_glob[k])*(self.big_b[k][i][1+j,1+j] + self.m_h[k][i][0,1+j]**2)) for j in range(self.D[k])] for i in range(self.D[k+1])])
@@ -503,8 +467,7 @@ class VBNN:
                     for j in range(self.D[k]):
                         if max(1-gaussian.cdf(-weight_means[i][j]/stdev[i][j]), gaussian.cdf(-weight_means[i][j]/stdev[i][j])) >= kappa:
                             W_star[i,j] = np.copy(weight_means[i][j])
-                # else:
-                    # print('node with indices ', k+1, i, ' is zero,\n ratio for rho is ', len(self.rho[k][:, i][(self.rho[k][:, i]<0.5)]), 'from',  self.N)
+              
             W_stars.append(np.ndarray.copy(W_star))
 
         W_star_o = np.zeros((self.D[self.L +1], self.D[self.L]))
@@ -517,12 +480,7 @@ class VBNN:
         W_stars.append(W_star_o)
 
 
-        # for i in range(self.L):
-        #     for j in range(self.D[i]):
-        #         for k in range(self.D[i+1]):
-        #             if (np.abs(W_stars[i][k,j]*W_stars[i+1][:, k])<epsilon*np.ones(W_stars[i+1][:, k].shape)).all():
-        #                 W_stars[i][k,j] = 0
-
+   
 
         for i in range(1, self.L + 1):
             for j in range(self.D[i]):
@@ -691,7 +649,6 @@ class VBNN:
         x_new = np.ndarray.copy(x_for_pred).reshape(N_pred, self.D[0], 1)
         self.elbo_pred = []
         W_sparse = self.sparse_weighs(alpha, epsilon)[0]
-        # W_sparse = self.AfterSAV(self.sparse_weighs(alpha)[0])[0]
         m_h = [np.array([np.hstack((self.m_h[k][i][:,0], W_sparse[k][i])) for i in range(self.D[k+1])]).reshape(self.m_h[k].shape) for k in range(self.L)]
         m_o = np.array([np.hstack((self.m_o[i][:,0], W_sparse[-1][i])) for i in range(self.D[self.L+1])]).reshape(self.m_o.shape) 
         big_b =  [np.copy(self.big_b[k]) for k in range(self.L+1)]
@@ -819,7 +776,6 @@ class VBNN:
     def elbo_psi(self):
         elbo_psi= 0.5*sum([inv_mean_IG(self.nu_loc[k][i][j], self.delta_loc[k][i][j])*(self.delta_loc[k][i][j]**2 - self.delta_psi_prior[k]**2) for k in range(self.L+1) for i in range(self.D[k+1]) for j in range(self.D[k])])\
             + 2*sum([self.nu_loc[k][i][j]*math.log(self.delta_loc[k][i][j]) for k in range(self.L+1) for i in range(self.D[k+1]) for j in range(self.D[k])])
-            # + 2*sum([self.nu_loc[k][i][j]*math.log(self.delta_loc[k][i][j]) for k in range(self.L+1) for i in range(self.D[k+1]) for j in range(self.D[k])]) - 2*sum([self.D[k+1]*self.D[k]*self.nu_psi_prior*math.log(self.delta_psi_prior[k]) for k in range(self.L+1)])
         return elbo_psi
   
      
@@ -910,4 +866,6 @@ class VBNN:
          
         et = time.time()
         return et-st, len(self.elbo_total)
+    
+
     
