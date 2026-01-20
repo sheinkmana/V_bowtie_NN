@@ -5,10 +5,10 @@ The VBNN is described and derived in a [Variational Bayesian Bow tie Neural Netw
 
  ---
 
- ## The main_code folder contains the full VBNN model's code, as well as utilities for model running and benchmarking. 
+#### The main_code folder contains the full VBNN model's code, as well as utilities for model running and benchmarking. 
 
 
- ## The toy_example folder has the following older files:
+ #### The toy_example folder has the following older files:
 - VBNN_class.py which contains the simplified code logic for the network. 
 - helpers.py which contains utilities for easy training and testing.
 - test.ipynb notebook which shows how to run VBNN on a simulated example.   
