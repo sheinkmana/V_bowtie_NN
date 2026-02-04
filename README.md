@@ -1,4 +1,3 @@
-## Variational Bayesian Bow tie Neural Networks with Shrinkage
 This repository provides a Python implementation of the Variational Bow tie neural network (VBNN) which is described and derived in a [Variational Bayesian Bow tie Neural Networks with Shrinkage](https://arxiv.org/abs/2411.11132) paper. 
  ---
 ```
