@@ -18,7 +18,7 @@ V_bowtie_NN/
 │   │   │   └── prediction_sparse_vbnn.py  # Sparse Training
 │   │
 │   ├── data/                        # DATA MANAGEMENT
-│   │   ├── __init__.py
+│   │  	──...			     # Datasets	
 │   │   └── data.py                  # Dataset loaders & preprocessing
 │   │
 │   ├── config.py                    # Configuration Dataclasses
