@@ -5,15 +5,17 @@ V_bowtie_NN/
 ├── main_code/
 │   │
 │   ├── VBNN_model/                  # CORE MODEL LOGIC
-│   │   ├── __init__.py
 │   │   ├── base_vbnn.py             # Base class 
 │   │   ├── prediction_vbnn.py       # Prediction Mixin 
-│   │   ├── sparse_vbnn.py           # Sparsity Mixin 
+│   │   ├── sparify_vbnn.py           # Sparsity Mixin 
 │   │   ├── mixer_vbnn.py            # Composition Root 
 │   │   ├── training_vbnn.py         # Dense Training (CAVI & SVI algorithms)
 │   │   ├── masking_training_vbnn.py # Iterative Pruning (Masking during training)
-│   │   ├── training_sparse_vbnn.py  # Sparse Training 
 │   │   └── utils.py                 # Math helpers
+│   │   ├──pruned_network/  
+│   │   │   ├── training_sparse_vbnn.py  # Sparse Training 
+│   │   │   ├── svi_training_sparse_vbnn.py  # Sparse Training 
+│   │   │   └── prediction_sparse_vbnn.py  # Sparse Training
 │   │
 │   ├── data/                        # DATA MANAGEMENT
 │   │   ├── __init__.py
@@ -21,7 +23,7 @@ V_bowtie_NN/
 │   │
 │   ├── config.py                    # Configuration Dataclasses
 │   ├── runner.py                    # Experiment & Benchmarking
-│   ├── example.py            	     # Example
+│   └──example.py            	     # Example
 │   │
 ├── toy_example/	 # Older toy example
 │   │
