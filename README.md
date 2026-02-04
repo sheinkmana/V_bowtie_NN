@@ -1,4 +1,3 @@
-## Variational Bayesian Bow tie Neural Networks with Shrinkage
 This repository provides a Python implementation of the Variational Bow tie neural network (VBNN) which is described and derived in a [Variational Bayesian Bow tie Neural Networks with Shrinkage](https://arxiv.org/abs/2411.11132) paper. 
  ---
 ```
@@ -6,15 +5,17 @@ V_bowtie_NN/
 ├── main_code/
 │   │
 │   ├── VBNN_model/                  # CORE MODEL LOGIC
-│   │   ├── __init__.py
 │   │   ├── base_vbnn.py             # Base class 
 │   │   ├── prediction_vbnn.py       # Prediction Mixin 
-│   │   ├── sparse_vbnn.py           # Sparsity Mixin 
+│   │   ├── sparify_vbnn.py           # Sparsity Mixin 
 │   │   ├── mixer_vbnn.py            # Composition Root 
 │   │   ├── training_vbnn.py         # Dense Training (CAVI & SVI algorithms)
 │   │   ├── masking_training_vbnn.py # Iterative Pruning (Masking during training)
-│   │   ├── training_sparse_vbnn.py  # Sparse Training 
 │   │   └── utils.py                 # Math helpers
+│   │   ├──pruned_network/  
+│   │   │   ├── training_sparse_vbnn.py  # Sparse Training 
+│   │   │   ├── svi_training_sparse_vbnn.py  # Sparse Training 
+│   │   │   └── prediction_sparse_vbnn.py  # Sparse Training
 │   │
 │   ├── data/                        # DATA MANAGEMENT
 │   │   ├── __init__.py
@@ -22,7 +23,7 @@ V_bowtie_NN/
 │   │
 │   ├── config.py                    # Configuration Dataclasses
 │   ├── runner.py                    # Experiment & Benchmarking
-│   ├── example.py            	     # Example
+│   └──example.py            	     # Example
 │   │
 ├── toy_example/	 # Older toy example
 │   │
@@ -81,7 +82,7 @@ These files provide the user interface for running experiments:
 * `utils.py` contains the low-level mathematical primitives required for the VBNN. 
 
 --------
-### The toy_example folder has the following older files:
+### The ` toy_example`  folder has the following older files:
 - `VBNN_class.py` which contains the simplified code logic for the network. 
 - `helpers.py` which contains utilities for easy training and testing.
 - `test.ipynb` notebook which shows how to run VBNN on a simulated example.   
