@@ -80,7 +80,7 @@ These files provide the user interface for running experiments:
 * `utils.py` contains the low-level mathematical primitives required for the VBNN. 
 
 --------
-### The toy_example folder has the following older files:
+### The ` toy_example`  folder has the following older files:
 - `VBNN_class.py` which contains the simplified code logic for the network. 
 - `helpers.py` which contains utilities for easy training and testing.
 - `test.ipynb` notebook which shows how to run VBNN on a simulated example.   
