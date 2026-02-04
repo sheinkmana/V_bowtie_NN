@@ -1,4 +1,4 @@
-from .sparse_vbnn import VBNNSparsityMixin
+from .sparsify_vbnn import VBNNSparsityMixin
 
 class VBNNBase(VBNNSparsityMixin):
     """

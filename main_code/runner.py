@@ -1,16 +1,14 @@
 
 import numpy as np
-from typing import Optional, Dict, Any, Union, Callable, List
+from typing import Dict, Any, Union, Callable, List
 import time
 import pandas as pd
 from datetime import datetime
 import json
-
-# from data.data import DatasetLoader
 from VBNN_model.training_vbnn import VBNN_improving, VBNN_SVI_improving
-# from SVBNN_main import VBNN_SVI_improving
+from VBNN_model.masking_training_vbnn import VBNN_Iterative_CAVI, VBNN_Iterative_SVI
 from config import ExperimentConfig, SVIExperimentConfig
-from utils import RMSE, NL, empirical_coverage_quantile
+from VBNN_model.utils import RMSE, NL, empirical_coverage_quantile
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
 
@@ -37,7 +35,87 @@ class VBNNRunner:
         # Initialize model based on type
         print(f"Initializing {self.config.algorithm} model...")
         start_time = time.time()
-        
+        # In runner.py
+
+        # 1. SVI Logic
+        if self.is_svi:
+            assert isinstance(self.config, SVIExperimentConfig)
+            
+            # Check for Iterative Pruning
+            if getattr(self.config.training, 'iterative_pruning', False):
+                print("Using VBNN_Iterative_SVI strategy.")
+                ModelClass = VBNN_Iterative_SVI
+            else:
+                ModelClass = VBNN_SVI_improving
+
+            self.model = ModelClass(
+                x=self.dataset.X_train,
+                y=self.dataset.y_train,
+                D_H=self.config.model.D_H,
+                L=self.config.model.L,
+                T=self.config.model.T,
+                wb_mode=self.config.model.wb_mode,
+                big_S=self.config.model.big_S,
+                sample_size=self.config.training.sample_size,
+                big_B=self.config.model.big_B,
+                beta_eta_h_prior=self.config.model.beta_eta_h_prior,
+            )
+            
+            # Prepare kwargs based on whether it's iterative or not
+            train_kwargs = {
+                'epochs': self.config.training.epochs,
+                'forgrate': self.config.training.forgetting_rate,
+                'EM_step': self.config.training.EM_step,
+                'rate_local': self.config.training.rate_local
+            }
+            
+            if getattr(self.config.training, 'iterative_pruning', False):
+                train_kwargs.update({
+                    'pruning_interval': self.config.training.pruning_interval,
+                    'pruning_alpha': self.config.training.pruning_alpha
+                })
+
+            print("\nTraining SVI model...")
+            self.model.svi_alg(**train_kwargs)
+
+        # 2. CAVI Logic
+        else:
+            assert isinstance(self.config, ExperimentConfig)
+            
+            # Check for Iterative Pruning
+            if getattr(self.config.training, 'iterative_pruning', False):
+                print("Using VBNN_Iterative_CAVI strategy.")
+                ModelClass = VBNN_Iterative_CAVI
+            else:
+                ModelClass = VBNN_improving
+
+            self.model = ModelClass(
+                x=self.dataset.X_train,
+                y=self.dataset.y_train,
+                D_H=self.config.model.D_H,
+                L=self.config.model.L,
+                T=self.config.model.T,
+                wb_mode=self.config.model.wb_mode,
+                big_S=self.config.model.big_S,
+                big_B=self.config.model.big_B,
+                beta_eta_h_prior=self.config.model.beta_eta_h_prior,
+            )
+            
+            # Prepare kwargs
+            train_kwargs = {
+                'epochs': self.config.training.epochs,
+                'rate': self.config.training.rate,
+                'EM_step': self.config.training.EM_step
+            }
+
+            if getattr(self.config.training, 'iterative_pruning', False):
+                train_kwargs.update({
+                    'pruning_interval': self.config.training.pruning_interval,
+                    'pruning_alpha': self.config.training.pruning_alpha
+                })
+            
+            print("\nTraining CAVI model...")
+            self.model.algorithm(**train_kwargs)
         if self.is_svi:
 
             assert isinstance(self.config, SVIExperimentConfig)
@@ -59,11 +137,6 @@ class VBNNRunner:
             print("\nTraining SVI model...")
             self.model.svi_alg(
                 epochs=self.config.training.epochs,
-                # a=self.config.training.update_a,
-                # rho=self.config.training.update_rho,
-                # weights=self.config.training.update_weights,
-                # weightsout=self.config.training.update_weightsout,
-                # eta=self.config.training.update_eta,
                 forgrate=self.config.training.forgetting_rate,
                 EM_step=self.config.training.EM_step,
                 rate_local=self.config.training.rate_local
@@ -105,33 +178,55 @@ class VBNNRunner:
         
         return self.results
     
+
     def predict(self) -> Dict[str, Any]:
-        """Make predictions using configuration."""
+        """
+        Make predictions using configuration.
+        
+        Supports two modes:
+        1. Sparse (Pruned): Converts model to sparse lists, skipping zero weights.
+        2. Dense (Normal): Uses full matrix multiplication (zeros are included in calc).
+        """
         if self.model is None:
             raise ValueError("Model not trained. Call train() first.")
         
-        print("\nMaking predictions...")
+        print("\nMaking predictions.")
         
+        # 1. Sparse Prediction (Pruned Architecture)
         if self.config.prediction.sparse:
-            self.model.sparse_predict(
+            
+            # This method calculates the sparsity pattern (or uses the existing zeros 
+            # from iterative pruning), converts matrices to ragged lists, and predicts.
+            self.model.sparse_predict_pruned(
                 x_for_pred=self.dataset.X_test,
                 epochs_pred=self.config.prediction.epochs_pred,
                 alpha=self.config.prediction.alpha,
                 rate_pred=self.config.prediction.rate_pred
             )
-            predictions = self.model.sparse_prediction_mean
-            variance = self.model.sparse_var_tot
+            
+        # 2. Normal Prediction (Dense Architecture)
         else:
+        
+            
+            # If iterative pruning was used, this still works fine. 
+            # The weights are 0.0, so the math is correct, just less efficient 
+            # than the sparse mode.
             self.model.predict(
                 x_for_pred=self.dataset.X_test,
                 epochs_pred=self.config.prediction.epochs_pred,
                 rate_pred=self.config.prediction.rate_pred
             )
-            predictions = self.model.prediction_mean
-            variance = self.model.var_tot
+
+        # 3. Extract Results
+        # Both methods populate 'prediction_mean' and 'var_tot' attributes
+        predictions = self.model.prediction_mean
+        variance = self.model.var_tot
         
+        # 4. Calculate Metrics
         rmse = RMSE(self.dataset.y_test, predictions)
-        nll = NL(self.dataset.y_test, predictions.reshape(self.dataset.y_test.shape), np.sqrt(variance).reshape(self.dataset.y_test.shape))
+        nll = NL(self.dataset.y_test, 
+                 predictions.reshape(self.dataset.y_test.shape), 
+                 np.sqrt(variance).reshape(self.dataset.y_test.shape))
         coverage = empirical_coverage_quantile(self.dataset.y_test, predictions, np.sqrt(variance))
 
         self.results.update({
@@ -149,47 +244,9 @@ class VBNNRunner:
         print(f"  Coverage:   {coverage:.4f}")
         
         return self.results
-        
-    def analyze_sparsity(self, alpha: Optional[float] = None) -> Dict[str, Any]:
-        """Analyze model sparsity."""
-        if self.model is None:
-            raise ValueError("Model not trained. Call train() first.")
-        
-        alpha = alpha or self.config.prediction.alpha
-        W_sparse = self.model.sparse_weights(alpha=alpha)
-        connections = self.model.list_connections(W_sparse)
-        
-        # Count parameters
-        total_weights = sum([
-            self.dataset.X_train.shape[1] * self.config.model.D_H  # Input to first hidden
-        ] + [
-            self.config.model.D_H * self.config.model.D_H  # Hidden to hidden
-            for _ in range(self.config.model.L - 1)
-        ] + [
-            self.config.model.D_H * self.dataset.y_train.shape[1]  # Last hidden to output
-        ])
-        
-        active_weights = len(connections)
-        sparsity = 1 - (active_weights / total_weights)
-        
-        sparsity_results = {
-            'total_weights': total_weights,
-            'active_weights': active_weights,
-            'sparsity': sparsity,
-            'connections': connections,
-            'W_sparse': W_sparse
-        }
-        
-        print(f"\nSparsity Analysis (α={alpha}):")
-        print(f"  Total weights:  {total_weights}")
-        print(f"  Active weights: {active_weights}")
-        print(f"  Sparsity:       {sparsity:.2%}")
-        
-        self.results['sparsity'] = sparsity_results
-        return sparsity_results
-    
-  
-    
+
+
+
     
     def save_results(self, filepath: str):
         """Save results to file."""
@@ -324,6 +381,9 @@ class BenchmarkResult:
     model_name: str
     inference_method: str
     temperature: float
+    iterative_pruning: bool 
+    pruning_interval: int 
+    pruning_alpha: float
     big_S: float
     big_B: float
     no_layers: int
@@ -345,9 +405,6 @@ class BenchmarkResult:
     n_test_samples: int
     n_features: int
     timestamp: str
-    
-    # Optional Sparsity
-    sparsity_mean: Optional[float] = None
     
     # Raw split data
     split_results: List[Dict[str, Any]] = field(default_factory=list)
@@ -396,6 +453,9 @@ class BenchmarkRunner:
                 model_name=self.config.model.wb_mode,
                 inference_method=self.config.algorithm,
                 temperature=self.config.model.T,
+                iterative_pruning=getattr(self.config.training, 'iterative_pruning', False),
+                pruning_interval=getattr(self.config.training, 'pruning_interval', 0),
+                pruning_alpha=getattr(self.config.training, 'pruning_alpha', 0.0),
                 big_S=self.config.model.big_S,
                 big_B=self.config.model.big_B,
                 beta_h_prior=self.config.model.beta_eta_h_prior,
@@ -409,7 +469,6 @@ class BenchmarkRunner:
                 coverage_std=get_val('test_coverage', 'std'),
                 avg_train_time=get_val('training_time', 'mean'),
                 
-                sparsity_mean=get_val('sparsity_val', 'mean') if self.config.prediction.sparse else None,
                 
                 n_splits=splitter.n_splits,
                 n_train_samples=meta.get('n_train', 0),
@@ -458,6 +517,9 @@ class BenchmarkRunner:
                 'model': result.model_name,
                 'method': result.inference_method,
                 'temperature': result.temperature,
+                'iterative_pruning': result.iterative_pruning,
+                'pruning_interval': result.pruning_interval,
+                'pruning_alpha': result.pruning_alpha,
                 'big_S': result.big_S,
                 'big_B': result.big_B,
                 'beta_eta_h_prior': result.beta_h_prior,
@@ -470,7 +532,6 @@ class BenchmarkRunner:
                 'coverage_mean': result.coverage_mean,
                 'coverage_std': result.coverage_std,
                 'avg_train_time': result.avg_train_time,
-                'sparsity_mean': result.sparsity_mean,
                 'n_total_splits': result.n_splits,
                 'n_train': result.n_train_samples,
                 'n_test': result.n_test_samples,

@@ -1,28 +1,85 @@
+
 import numpy as np
-import time
 import math
+from typing import List, Union
 from scipy.stats import invgamma
+
 from numpy.typing import NDArray
 from scipy.linalg import solve
-from .utils import better_sigmoid, pg_mean, inv_mean_IG_eta, smart_log, logcosh
-from .base_vbnn import VBNNCore
+from ..utils import better_sigmoid, inv_mean_IG_eta, pg_mean, smart_log, logcosh
 
-class VBNNPredictionMixin(VBNNCore):
+class VBNNSparsePredictionMixin:
     """
-    Layer 2: Prediction capabilities.
-    Inherits from VBNNCore.
+    Mixin to add prediction capabilities to VBNN_SparseTraining.
     """
     
-    def _init_prediction_caches(self):
-        self.b_predict, self.M_predict, self.S_predict, self.rho_predict, self.A_predict = None, None, None, None, None
+    # =========================================================================
+    # TYPE HINTS (Interface Contract)
+    # These tell Pylance: "Expect the host class to have these attributes"
+    # =========================================================================
+    D: List[int]
+    L: int
+    T: float
+    N: int
+    
+    # Sparse specific attributes
+    active_neurons: List[np.ndarray]
+    S: List[np.ndarray]
+    m_h: List[np.ndarray]
+    m_o: np.ndarray
+    big_b: List[np.ndarray] # or big_b_pruned depending on your naming
+    
+    # Noise parameters
+    alpha_h: Union[float, np.floating]
+    beta_h: List[np.ndarray]
+    alpha_0: Union[float, np.floating]
+    beta_0: np.ndarray
+    
+    # # Prediction Caches (initialized in this mixin, but typed here)
+    # cached_means_predict: List[np.ndarray]
+    # cached_aats_predict: List[np.ndarray]
+    # cache_valid_predict: bool
+    
+    # # Prediction Parameters
+    # M_predict: Optional[List[List[np.ndarray]]]
+    # b_predict: Optional[List[List[np.ndarray]]]
+    # S_predict: Optional[List[np.ndarray]]
+    # rho_predict: Optional[List[np.ndarray]]
+    # A_predict: Optional[List[np.ndarray]]
+    
+    # =========================================================================
+    # IMPLEMENTATION
+    # =========================================================================
+
+    # def _init_prediction_caches(self):
+    #     """Initialize the cache structures for prediction."""
+    #     # We can safely use self.N and self.D here now
+    #     self.cached_means_predict = [
+    #         np.zeros((1, 1, 1)) for _ in range(self.L + 1) # Placeholder size, resized in predict
+    #     ]
+    #     self.cached_aats_predict = [
+    #         np.zeros((1, 1, 1)) for _ in range(self.L + 1)
+    #     ]
+    #     self.cache_valid_predict = False
+    #     self.M_predict = None
+    #     self.b_predict = None
+    #     self.S_predict = None
+    #     self.rho_predict = None
+    #     self.A_predict = None
+    #     self.elbo_pred = []
+    def _init_prediction_caches(self, N_pred):
+        self.A_predict = [[] for _ in range(self.L) ]
+
+        self.b_predict, self.M_predict, self.S_predict, self.rho_predict = None, None, None, None
         
         self.cached_means_predict: list[NDArray] = [
-            np.zeros((self.N, self.D[i], 1)) for i in range(self.L + 1)
+            np.zeros((N_pred, self.D[i], 1)) for i in range(self.L + 1)
         ]
         self.cached_aats_predict: list[NDArray] = [
-            np.zeros((self.N, self.D[i], self.D[i])) for i in range(self.L + 1)
+            np.zeros((N_pred, self.D[i], self.D[i])) for i in range(self.L + 1)
         ]
         self.cache_valid_predict = False
+        self.elbo_pred = []
 
       
     def _compute_forward_pass_predict(self, x_new):
@@ -64,14 +121,17 @@ class VBNNPredictionMixin(VBNNCore):
         self.cache_valid_predict = True
 
 
-    def predict(self, x_for_pred, epochs_pred, rate_pred = 0.00001):
-        if self.A_predict is None:
-            raise ValueError("A_predict must be initialized before calling prediction (via initializing VBNN_algorithm).")
-
-        pred_time_start = time.time()
-        N_pred = x_for_pred.shape[0]
-        x_new = np.ndarray.copy(x_for_pred).reshape(N_pred, self.D[0], 1)
-        self.elbo_pred = []
+    def predict(self, x_for_pred: np.ndarray, epochs_pred: int = 10, rate_pred: float = 0.00001):
+        """
+        Sparse prediction logic.
+        """
+        active_input_features = self.active_neurons[0]
+        x_pr = x_for_pred[:, active_input_features]
+        N_pred = x_pr.shape[0]
+        self._init_prediction_caches(N_pred)
+ 
+        # Reshape for processing (N, D_in, 1)
+        x_new = x_pr.reshape(N_pred, len(active_input_features), 1)
 
         self.M_predict = []
         self.b_predict = []
@@ -83,12 +143,11 @@ class VBNNPredictionMixin(VBNNCore):
             self.b_predict.append([(self.m_h[k].squeeze()[:,0]*self.rho_predict[k][j]).reshape(self.D[k+1], 1) for j in range(N_pred)])
             x_init = np.array([np.copy(self.M_predict[k][n])@np.copy(x_init[n]) + np.copy(self.b_predict[k][n]) for n in range(N_pred)]).reshape(N_pred, self.D[k+1], 1)
 
-        self.S_predict = [np.array([np.mean(self.S).item()*np.eye(self.D[k+1])]*N_pred) for k in range(self.L)]
+        self.S_predict = [np.array([np.mean(self.S[0]).item()*np.eye(self.D[k+1])]*N_pred) for k in range(self.L)]
         
-        self.cache_valid_predict = False
         self._compute_forward_pass_predict(x_new)
         
-        for k in range(self.L):    
+        for k in range(self.L):   
             self.A_predict[k] = []
             for j in range(N_pred):
                 tobm = self.cached_means_predict[k][j]
@@ -193,5 +252,4 @@ class VBNNPredictionMixin(VBNNCore):
 
         self.var_tot = np.array([self.var_lin[:, i] + invgamma.mean(a = self.alpha_0, loc = 0, scale = self.beta_0[i]) for i in range(self.D[-1])]).reshape(self.prediction_mean.shape)
 
-        print('Prediction done in', round(time.time() - pred_time_start, 2), 'seconds.')
     

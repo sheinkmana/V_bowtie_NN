@@ -3,7 +3,7 @@ import numpy as np
 import math
 from typing import Optional
 from scipy.linalg import solve
-from utils import (inv_mean_IG, inv_mean_IG_eta, better_sigmoid, 
+from VBNN_model.utils import (inv_mean_IG, inv_mean_IG_eta, better_sigmoid, 
                    pg_mean)
 from .mixer_vbnn import VBNNBase
 
@@ -94,11 +94,13 @@ class VBNN_improving(VBNNBase):
             for k in reversed(range(self.L-1)):               
                 b_h_diag = np.diag([inv_mean_IG_eta(self.alpha_h, self.beta_h[k][i]) for i in range(self.D[k+1])])
                 for n in range(self.N):
-                    self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.M[k+1][n]\
+                    self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+2]), assume_a='pos')@self.M[k+1][n]\
+                    # self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.M[k+1][n]\
                                                 + np.sum([(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:, 1:] + self.m_h[k+1][i][:, 1:].T@self.m_h[k+1][i][:, 1:]) for i in range(self.D[k+2])], axis = 0),np.eye(self.D[k+1]), assume_a = 'pos')
                     rho_dot_w = self.m_h[k].squeeze()[:,1:]*self.rho[k][n].reshape(self.D[k+1],1)
                     rho_dot_b = (self.m_h[k].squeeze()[:,0]*self.rho[k][n]).reshape(self.D[k+1],1)
-                    self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.b[k+1][n]\
+                    # self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.b[k+1][n]\
+                    self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+2]), assume_a='pos')@self.b[k+1][n]\
                                                         + np.sum([-(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:,:1].reshape(self.D[k+1], 1)  + self.m_h[k+1][i][0,0]*self.m_h[k+1][i][:,1:].T )\
                                                         + 1/self.T*(self.rho[k+1][n][i] - 0.5)*self.m_h[k+1][i][:,1:].T for i in range(self.D[k+2])], axis =0))
                     self.M[k][n] = self.S[k][n]@b_h_diag@rho_dot_w 
@@ -302,11 +304,13 @@ class VBNN_SVI_improving(VBNNBase):
             for k in reversed(range(self.L-1)): 
                 b_h_diag = np.diag([inv_mean_IG_eta(self.alpha_h, self.beta_h[k][i]) for i in range(self.D[k+1])])
                 for n in range(self.sample_size):
-                    self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.M[k+1][n]\
+                    self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+2]), assume_a='pos')@self.M[k+1][n]\
+                    # self.S[k][n] =solve(b_h_diag - self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.M[k+1][n]\
                                                 + np.sum([(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:, 1:] +  self.m_h[k+1][i][:, 1:].T@ self.m_h[k+1][i][:, 1:]) for i in range(self.D[k+2])], axis = 0),np.eye(self.D[k+1]), assume_a = 'pos')
                     rho_dot_w =  self.m_h[k].squeeze()[:,1:]*self.rho[k][n].reshape(self.D[k+1],1)
                     rho_dot_b = ( self.m_h[k].squeeze()[:,0]*self.rho[k][n]).reshape(self.D[k+1],1)
-                    self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.b[k+1][n]\
+                    self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+2]), assume_a='pos')@self.b[k+1][n]\
+                    # self.b[k][n] = self.S[k][n]@(b_h_diag@rho_dot_b + self.M[k+1][n].T@solve(self.S[k+1][n], np.eye(self.D[k+1]), assume_a='pos')@self.b[k+1][n]\
                                                         + np.sum([-(inv_mean_IG_eta(self.alpha_h, self.beta_h[k+1][i])*self.rho[k+1][n][i] + 1/self.T**2*pg_mean(self.A[k+1][n][i]))*(self.big_b[k+1][i][1:,:1].reshape(self.D[k+1], 1)  +  self.m_h[k+1][i][0,0]* self.m_h[k+1][i][:,1:].T )\
                                                         + 1/self.T*(self.rho[k+1][n][i] - 0.5)* self.m_h[k+1][i][:,1:].T for i in range(self.D[k+2])], axis =0))
                     self.M[k][n] = self.S[k][n]@b_h_diag@rho_dot_w

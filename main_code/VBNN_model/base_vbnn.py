@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 
 from scipy.stats import norm, invgamma, bernoulli
 from sklearn.linear_model import LinearRegression, RidgeCV
-from utils import (inv_mean_IG, inv_mean_IG_eta, better_sigmoid, 
+from .utils import (inv_mean_IG, inv_mean_IG_eta, better_sigmoid, 
                    pg_mean, logcosh, smart_log, reparametrize_nu, reparametrize_delta)
 import jax.random as random
 from numpyro_models import model_numpyro_multilayer, do_svi
@@ -263,20 +263,20 @@ class VBNNCore:
             self.beta_0 =   np.full(self.D[self.L+1],min(beta_0, self.beta_eta_o_prior), dtype=np.float64)
 
     def _init_sample_params(self):
-            if self.sample_size is None:
-                return
-            
-            self.M, self.b, self.rho= [], [], []
-            #uniformly sample S indices
-            self.sample_indices =  np.sort(np.random.choice(self.N, self.sample_size, replace = False))
-            self.x_sample = np.copy(self.x[self.sample_indices])
-            self.y_sample = np.copy(self.y[self.sample_indices])
-            x_set = np.copy(self.x_sample)
-            for k in range(self.L):
-                self.rho.append(np.array([[better_sigmoid((self.m_h[k][i][0, 0] + np.array(self.m_h[k])[i][:, 1:]@x_set[n]).item()/self.T) for i in range(self.D[k+1])] for n in range(self.sample_size)]))
-                self.M.append([np.array(self.m_h[k]).squeeze()[:, 1:]*self.rho[-1][j].reshape(self.D[k+1], 1) for j in range(self.sample_size)])
-                self.b.append([(np.array(self.m_h[k]).squeeze()[:,0]*self.rho[-1][j]).reshape(self.D[k+1],1) for j in range(self.sample_size)])
-                x_set = np.array([np.copy(self.M[k][n])@np.copy(x_set[n]) + np.copy(self.b[k][n]) for n in range(self.sample_size)])
+        if self.sample_size is None:
+            return
+        
+        self.M, self.b, self.rho= [], [], []
+        #uniformly sample S indices
+        self.sample_indices =  np.sort(np.random.choice(self.N, self.sample_size, replace = False))
+        self.x_sample = np.copy(self.x[self.sample_indices])
+        self.y_sample = np.copy(self.y[self.sample_indices])
+        x_set = np.copy(self.x_sample)
+        for k in range(self.L):
+            self.rho.append(np.array([[better_sigmoid((self.m_h[k][i][0, 0] + np.array(self.m_h[k])[i][:, 1:]@x_set[n]).item()/self.T) for i in range(self.D[k+1])] for n in range(self.sample_size)]))
+            self.M.append([np.array(self.m_h[k]).squeeze()[:, 1:]*self.rho[-1][j].reshape(self.D[k+1], 1) for j in range(self.sample_size)])
+            self.b.append([(np.array(self.m_h[k]).squeeze()[:,0]*self.rho[-1][j]).reshape(self.D[k+1],1) for j in range(self.sample_size)])
+            x_set = np.array([np.copy(self.M[k][n])@np.copy(x_set[n]) + np.copy(self.b[k][n]) for n in range(self.sample_size)])
 
     
     def _compute_forward_pass(self):

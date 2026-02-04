@@ -43,38 +43,33 @@ class ModelConfig:
 class TrainingConfig:
     """Configuration for CAVI training algorithm."""
     epochs: int = 200
-    """Maximum number of training epochs"""
     rate: float = 1e-5
-    """Convergence rate threshold for early stopping"""
     EM_step: bool = False
-    """Whether to use EM updates for delta parameters"""
     
+    iterative_pruning: bool = False
+    """Whether to use iterative pruning during training"""
+    pruning_interval: int = 20
+    """Epoch interval between masking steps"""
+    pruning_alpha: float = 0.01
+    """FDR alpha threshold for masking"""
+
+
 
 @dataclass
 class SVITrainingConfig:
-    """Configuration for SVI (Stochastic Variational Inference) training."""
     epochs: int = 200
-    """Maximum number of training epochs"""
     sample_size: int = 100
-    """Mini-batch size for stochastic updates"""
     local_epochs: int = 40
-    """Number of local optimization iterations per global update"""
     rate_local: float = 1e-4
-    """Convergence rate for local parameter optimization"""
     forgetting_rate: float = 0.75
-    """Forgetting rate for stochastic gradient updates (learning rate decay)"""
-    update_a: bool = True
-    """Update activation parameters"""
-    update_rho: bool = True
-    """Update rho (sigmoid) parameters"""
-    update_weights: bool = True
-    """Update weight parameters"""
-    update_weightsout: bool = True
-    """Update output layer weights"""
-    update_eta: bool = True
-    """Update precision (eta) parameters"""
     EM_step: bool = False
-    """Whether to use EM updates for delta parameters"""
+    
+    iterative_pruning: bool = False
+    """Whether to use iterative pruning during training"""
+    pruning_interval: int = 20
+    """Epoch interval between masking steps"""
+    pruning_alpha: float = 0.01
+    """FDR alpha threshold for masking"""
 
 @dataclass
 class PredictionConfig:
