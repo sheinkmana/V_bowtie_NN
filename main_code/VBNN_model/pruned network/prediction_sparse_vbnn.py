@@ -12,11 +12,7 @@ class VBNNSparsePredictionMixin:
     """
     Mixin to add prediction capabilities to VBNN_SparseTraining.
     """
-    
-    # =========================================================================
-    # TYPE HINTS (Interface Contract)
-    # These tell Pylance: "Expect the host class to have these attributes"
-    # =========================================================================
+
     D: List[int]
     L: int
     T: float
